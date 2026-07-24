@@ -1,0 +1,15 @@
+{
+  "name": "proof-of-play",
+  "version": "0.1.0",
+  "description": "The empirical filter for a marketplace of AI-built tools: no listing without a reproducible, un-forgeable proof that the tool's repository passes a benchmark. Zero dependencies.",
+  "type": "module",
+  "main": "./filter.mjs",
+  "exports": { ".": "./filter.mjs" },
+  "bin": { "proof-of-play": "./filter.mjs" },
+  "scripts": { "test": "node --test test.mjs" },
+  "engines": { "node": ">=18.0.0" },
+  "keywords": ["marketplace", "anti-lemons", "benchmark", "provenance", "quality-gate", "proof-of-play", "deterministic", "zero-dependency"],
+  "author": "AI-Native Solutions",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/sjgant80-hub/proof-of-play.git" }
+}
