@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>proof-of-play — the anti-lemons gate</title>
+<meta name="description" content="No listing without a &lt;b&gt;reproducible, un-forgeable proof&lt;/b&gt; that the tool's repository passes a benchmark. No trusted signer, no authority, no manufactured scarcity.">
+<style>
+ :root{--bg:#0a0c0f;--panel:#11151b;--line:#232b36;--ink:#dde5ef;--dim:#8d9bad;--faint:#5d6b7d;
+   --ok:#3fb27f;--warn:#d9a441;--no:#e05561;--accent:#6ea8fe;
+   --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;--sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+ *{box-sizing:border-box}html,body{margin:0}
+ body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.55}
+ .wrap{max-width:980px;margin:0 auto;padding:0 18px 70px}a{color:var(--accent)}code{font-family:var(--mono);font-size:.92em}
+ header{padding:44px 0 24px;border-bottom:1px solid var(--line)}
+ h1{font-family:var(--mono);font-size:clamp(23px,4.2vw,34px);margin:0 0 10px;letter-spacing:-.02em}
+ h1 .d{color:var(--ok)}
+ .lede{color:var(--dim);max-width:62ch;margin:0;font-size:clamp(15px,2.2vw,17.5px)}.lede b{color:var(--ink);font-weight:600}
+ .stats{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+ .stat{font-family:var(--mono);font-size:12px;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:5px 11px;color:var(--dim)}
+ .stat b{color:var(--ink)}.stat.ok b{color:var(--ok)}
+ h2{font-size:12.5px;font-family:var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--faint);margin:34px 0 13px}
+ .panel{background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:17px 19px}
+ label{display:block;font-size:11.5px;font-family:var(--mono);color:var(--faint);margin:11px 0 4px;letter-spacing:.05em}
+ input,select{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:7px;padding:8px 10px;color:var(--ink);font:inherit;font-size:13.5px}
+ input:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px}
+ .row{display:flex;gap:12px;flex-wrap:wrap}.row>*{flex:1;min-width:150px}
+ .out{margin-top:16px;border-top:1px solid var(--line);padding-top:15px;display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}
+ .vb{font-family:var(--mono);font-size:22px;font-weight:700;padding:9px 16px;border-radius:8px;border:1px solid;white-space:nowrap}
+ .v-ok{color:var(--ok);border-color:#1e5540;background:#0f2119}
+ .v-no{color:var(--no);border-color:#5e2429;background:#210f11}
+ .why{flex:1;min-width:230px;font-size:13.5px;color:var(--dim)}.why b{color:var(--ink)}
+ .why .mono{font-family:var(--mono);font-size:12px;color:var(--faint);word-break:break-all;margin-top:6px}
+ .note{border-left:2px solid var(--line);padding-left:13px;color:var(--dim);font-size:13.5px;margin:14px 0}
+ .note.warn{border-left-color:var(--warn)}.note b{color:var(--ink)}
+ .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:11px}
+ .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:15px 17px}
+ .card h3{margin:0 0 6px;font-size:14.5px}.card p{margin:0;font-size:13.4px;color:var(--dim)}
+ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:7px 9px;border-bottom:1px solid var(--line)}
+ th{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
+ td.k{font-family:var(--mono);color:var(--dim)}
+ footer{margin-top:40px;padding-top:19px;border-top:1px solid var(--line);color:var(--faint);font-size:12.5px}
+</style></head><body><div class="wrap">
+<header>
+ <h1>proof-of-play<span class="d">.</span></h1>
+ <p class="lede">No listing without a <b>reproducible, un-forgeable proof</b> that the tool's repository passes a benchmark. No trusted signer, no authority, no manufactured scarcity.</p>
+ <div class="stats">
+  <span class="stat ok"><b>155</b> lines of kernel, live on this page</span>
+  <span class="stat">decision logic is the real thing</span>
+  <span class="stat">works offline</span>
+ </div>
+</header>
+
+<h2>The lemons problem</h2>
+<p class="note">A catalogue that admits tools on <b>self-asserted</b> quality is worthless: anyone can claim
+their tool is good, so junk and gold list side by side and the price collapses. The fix is one rule —
+<b>a tool lists only if its repository passes a benchmark, and the pass is a receipt anyone can reproduce.</b></p>
+
+<h2>Try to list something</h2>
+<div class="panel">
+  <div class="row">
+    <div>
+      <label for="repo">repository</label>
+      <input id="repo" value="some-ai-built-tool" spellcheck="false">
+    </div>
+    <div>
+      <label for="badge">what the benchmark ACTUALLY returned</label>
+      <select id="badge">
+        <option value="true">passed</option>
+        <option value="false">failed</option>
+      </select>
+    </div>
+  </div>
+  <label for="claim">what the submitter CLAIMS about it</label>
+  <input id="claim" value="production-ready, best in class, fully tested" spellcheck="false">
+  <div class="out">
+    <div id="vb" class="vb v-ok">LISTED</div>
+    <div class="why"><span id="why"></span><div class="mono" id="hash"></div></div>
+  </div>
+</div>
+<p class="note"><b>The claim box does nothing.</b> It is there so you can watch it do nothing — the verdict
+comes from the benchmark's own content-addressed hash, and a proof whose hash does not reproduce is not a proof.</p>
+
+<h2>Now try to forge one</h2>
+<p class="note">Alongside your submission the page hands <code>verify()</code> a <b>forged receipt</b>: a proof
+that claims <code>admissible: true</code> and carries the hash a passing repo would have. Set the benchmark to
+<b>failed</b> and watch the forgery get caught — not by a signature check, but because re-running the benchmark
+produces a different hash than the receipt claims.</p>
+<div class="panel">
+  <div class="out">
+    <div id="fvb" class="vb v-ok">AUTHENTIC</div>
+    <div class="why"><span id="fwhy"></span><div class="mono" id="fdetail"></div></div>
+  </div>
+</div>
+
+<h2>Why it cannot be forged</h2>
+<div class="cards">
+ <div class="card"><h3>No trusted signer</h3><p>Nobody's signature makes a proof valid. The benchmark is deterministic over the repository, so anyone can re-run it and confirm the hash themselves.</p></div>
+ <div class="card"><h3>The receipt carries the verdict</h3><p>A proof holds the benchmark's own content-addressed verdict hash. You cannot assert a pass your code does not produce.</p></div>
+ <div class="card"><h3>Re-verified, not remembered</h3><p><code>verify()</code> re-runs the benchmark against the repo. A listing is a live claim, not a badge earned once.</p></div>
+ <div class="card"><h3>No manufactured scarcity</h3><p>Passing is not rationed and not curated. Everything that passes lists; everything that does not, does not.</p></div>
+</div>
+
+<h2>The honest bound</h2>
+<p class="note warn"><b>This page runs the filter's decision logic, not a benchmark.</b> The kernel takes its
+assessor injected, so here it is handed a stub and you choose what the benchmark "returned". That is enough to
+show what the gate does with an answer — it is not a claim that anything was assessed.</p>
+<footer>
+ <p><b>Generated, never typed.</b> The kernel on this page is inlined verbatim from the repo by
+ <code>node build-page.mjs</code>. The gate you exercise here is the real <code>proveRepo</code> and <code>defaultPolicy</code>.</p>
+ <p>MIT · part of the Fall estate · <a href="https://github.com/sjgant80-hub/proof-of-play">source</a> ·
+ <a href="https://sjgant80-hub.github.io/fallworld/">fall world</a></p>
+</footer>
+</div>
+<script type="module">
+
+// ── browser shims. Every one throws: the demo injects its dependencies, so if one of these is ever
+// reached it means the page took an I/O path and should fail loudly rather than fake a result.
+const spawnSync = () => { throw new Error('spawnSync is not available in the browser — this demo injects its assessor'); };
+const readFileSync = () => { throw new Error('readFileSync is not available in the browser'); };
+const basename = (p) => String(p).split(/[\\/]/).filter(Boolean).pop() || String(p);
+// process is shimmed INERT rather than removed, so the kernel's own bottom-of-file guard
+// (`if (process.argv[1] && ...) cli(process.argv)`) evaluates argv[1] as undefined and declines to
+// start the command line — which is exactly what that guard is for. env is empty so the default
+// assessor path resolves to the literal fallback; the page never calls it, it injects its own.
+const process = { argv: [], env: {}, execPath: 'node',
+  exit: (c) => { throw new Error('process.exit(' + c + ') is not available in the browser'); } };
+// ════════════════════════════════════════════════════════════════
+// proof-of-play · the empirical filter — no listing without a reproducible proof of value
+//
+// A marketplace of AI-built tools has a lemons problem: anyone can *claim* their tool is good,
+// and a catalog that lists on self-asserted quality is worthless. This is the anti-lemons gate.
+// A tool may list only if its repository PASSES a benchmark — and the pass is a **Proof-of-Play**:
+// a receipt carrying the benchmark's own content-addressed verdict hash.
+//
+// The proof is un-forgeable by construction, with no trusted signer required. The benchmark is
+// deterministic over the repository, so anyone can re-run it and confirm the hash. You cannot
+// assert a pass your code does not produce, because the verdict reproduces or it doesn't.
+//
+// The benchmark is INJECTABLE. The default is acg-assessor (a deterministic, content-addressed
+// code-quality rubric), but any benchmark that returns { badge, hash, spec, specFingerprint,
+// summary } works. proof-of-play is the gate; the benchmark is the bar.
+//
+// Zero dependencies — node:child_process, node:crypto, node:fs, node:path.
+// ════════════════════════════════════════════════════════════════
+
+
+const PROOF_VERSION = '0.1';
+
+// The default benchmark: run acg-assessor as a subprocess and parse its --json verdict.
+// Override the path with $PROOF_ASSESSOR or by passing your own `assess` function anywhere below.
+function assessorRunner(assessorPath = process.env.PROOF_ASSESSOR || 'acg-assessor/assessor.mjs') {
+  return (repoPath) => {
+    const r = spawnSync(process.execPath, [assessorPath, repoPath, '--json'],
+      { encoding: 'utf8', maxBuffer: 1 << 26 });
+    if (!r.stdout) throw new Error(`benchmark produced no verdict for ${repoPath}: ${(r.stderr || r.error?.message || 'unknown').split('\n')[0]}`);
+    let v; try { v = JSON.parse(r.stdout); } catch { throw new Error(`benchmark verdict for ${repoPath} was not JSON`); }
+    if (v.hash == null || v.badge == null) throw new Error(`benchmark verdict for ${repoPath} lacks badge/hash`);
+    return v;
+  };
+}
+
+// The default listing policy: a repo is admissible iff it earns the benchmark's badge.
+// Swap for a stricter or laxer bar — e.g. require a minimum non-core ratio as well.
+const defaultPolicy = (proof) => proof.verdict.badge === true;
+
+// ── prove ────────────────────────────────────────────────────────────────
+// Run the benchmark on a repo and mint a Proof-of-Play. `provedAt` is optional metadata and is
+// deliberately NOT part of the trust check — authenticity rests on the reproducible hash alone.
+function proveRepo(repoPath, { assess = assessorRunner(), policy = defaultPolicy, provedAt } = {}) {
+  const v = assess(repoPath);
+  const proof = {
+    v: PROOF_VERSION,
+    repo: basename(String(repoPath).replace(/[\\/]+$/, '')),
+    benchmark: { spec: v.spec ?? null, fingerprint: v.specFingerprint ?? null },
+    verdict: {
+      badge: v.badge === true,
+      core: v.summary?.core ?? null,
+      nonCore: v.summary?.nonCore ?? null,
+      dominantTell: v.dominantTell ?? null,
+    },
+    hash: v.hash,                       // the un-forgeable anchor: the benchmark's verdict hash
+  };
+  if (provedAt) proof.provedAt = provedAt;
+  proof.admissible = policy(proof) === true;
+  return proof;
+}
+
+// ── verify ───────────────────────────────────────────────────────────────
+// Re-run the benchmark and confirm the proof is authentic. A forged proof — one claiming a pass
+// the repo does not currently produce — fails here. This is why admission cannot be faked.
+function verify(proof, repoPath, { assess = assessorRunner() } = {}) {
+  if (!proof || typeof proof !== 'object' || !proof.hash)
+    return { ok: false, reason: 'malformed-proof' };
+  let fresh;
+  try { fresh = assess(repoPath); } catch (e) { return { ok: false, reason: 'benchmark-error', detail: String(e.message || e) }; }
+
+  if (fresh.hash !== proof.hash)
+    return { ok: false, reason: 'hash-mismatch', claimed: proof.hash, actual: fresh.hash };
+  if (proof.benchmark?.fingerprint && fresh.specFingerprint && proof.benchmark.fingerprint !== fresh.specFingerprint)
+    return { ok: false, reason: 'benchmark-version-changed', claimed: proof.benchmark.fingerprint, actual: fresh.specFingerprint };
+  // belt and braces: an admissibility claim must match what the verdict actually supports
+  if (proof.admissible === true && fresh.badge !== true)
+    return { ok: false, reason: 'admissibility-overclaim' };
+  return { ok: true, reason: 'authentic' };
+}
+
+// ── filter ───────────────────────────────────────────────────────────────
+// The gate. Partition a set of listings by whether their repository passes the benchmark.
+// `resolveRepo(listing)` maps a listing to a repo path (default: listing.repoPath or listing.repo).
+function filterListings(listings, {
+  assess = assessorRunner(), policy = defaultPolicy,
+  resolveRepo = (l) => l.repoPath || l.repo, provedAt,
+} = {}) {
+  const admitted = [], rejected = [], proofs = [];
+  for (const listing of listings) {
+    const repoPath = resolveRepo(listing);
+    if (!repoPath) { rejected.push({ listing, reason: 'no-repo' }); continue; }
+    let proof;
+    try { proof = proveRepo(repoPath, { assess, policy, provedAt }); }
+    catch (e) { rejected.push({ listing, reason: 'unresolvable', detail: String(e.message || e) }); continue; }
+    proofs.push(proof);
+    if (proof.admissible) admitted.push({ listing, proof });
+    else rejected.push({ listing, proof, reason: 'failed-benchmark' });
+  }
+  return { admitted, rejected, proofs, total: listings.length };
+}
+
+// ── CLI ────────────────────────────────────────────────────────────────────
+function cli(argv) {
+  const arg = (k, d) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : d; };
+  const cmd = argv[2];
+  const assess = assessorRunner(arg('--assessor', process.env.PROOF_ASSESSOR || 'acg-assessor/assessor.mjs'));
+
+  if (cmd === 'prove') {
+    const repo = argv[3];
+    if (!repo) { console.error('usage: prove <repo> [--assessor path]'); process.exit(2); }
+    const proof = proveRepo(repo, { assess });
+    console.log(JSON.stringify(proof, null, 2));
+    process.exit(proof.admissible ? 0 : 1);
+  }
+
+  if (cmd === 'verify') {
+    const proofPath = argv[3], repo = argv[4];
+    if (!proofPath || !repo) { console.error('usage: verify <proof.json> <repo> [--assessor path]'); process.exit(2); }
+    const proof = JSON.parse(readFileSync(proofPath, 'utf8'));
+    const r = verify(proof, repo, { assess });
+    console.log(`${r.ok ? '✓ AUTHENTIC' : '✗ ' + r.reason.toUpperCase()}` + (r.actual ? `  claimed ${r.claimed} · actual ${r.actual}` : ''));
+    process.exit(r.ok ? 0 : 1);
+  }
+
+  if (cmd === 'filter') {
+    const listingsPath = argv[3];
+    if (!listingsPath) { console.error('usage: filter <listings.json> [--root dir] [--assessor path]'); process.exit(2); }
+    const root = arg('--root', '.');
+    const raw = JSON.parse(readFileSync(listingsPath, 'utf8'));
+    const listings = Array.isArray(raw) ? raw : (raw.listings || []);
+    const resolveRepo = (l) => `${root}/${l.repo || l.name}`.replace(/\/+/g, '/');
+    const r = filterListings(listings, { assess, resolveRepo });
+    console.log(`listings: ${r.total}  ·  admitted: ${r.admitted.length}  ·  rejected: ${r.rejected.length}`);
+    for (const x of r.rejected) console.log(`  ✗ ${x.listing.repo || x.listing.name || '?'}  (${x.reason})`);
+    process.exit(0);
+  }
+
+  console.error('proof-of-play · commands: prove, verify, filter');
+  process.exit(2);
+}
+
+if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/').split('/').pop())) cli(process.argv);
+
+
+const $ = s => document.querySelector(s);
+function render(){
+  const passed = $('#badge').value === 'true';
+  // The real kernel, with the assessor injected — exactly how it is meant to be used.
+  const assess = () => ({ badge: passed, hash: 'v-' + (passed ? 'a91c3f77' : '00000000'), benchmark: 'acg-assessor' });
+  const repo = $('#repo').value || 'unnamed';
+  const proof = proveRepo(repo, { assess, provedAt: '2026-08-13' });
+  // Read the gate's OWN published field. Re-deriving the verdict in page code is how a page ends up
+  // confidently narrating a reason the kernel never gave.
+  const listed = proof.admissible === true;
+  $('#vb').className = 'vb ' + (listed ? 'v-ok' : 'v-no');
+  $('#vb').textContent = listed ? 'LISTED' : 'REFUSED';
+  $('#why').innerHTML = listed
+    ? 'The benchmark passed, so it lists. The submitter\'s claim was <b>not read</b>.'
+    : 'The benchmark did not pass, so it does not list — whatever the submitter claimed about it.';
+  $('#hash').textContent = 'proof.verdict: ' + JSON.stringify(proof.verdict) + '  hash: ' + proof.hash;
+
+  // The forgery: a receipt asserting the pass a passing repo would have earned, handed to the real
+  // verify() against the assessor you configured above.
+  const forged = { v: proof.v, repo, benchmark: proof.benchmark, hash: 'v-a91c3f77',
+                   verdict: { badge: true, core: 4, nonCore: 96, dominantTell: null }, admissible: true };
+  const r = verify(forged, repo, { assess });
+  $('#fvb').className = 'vb ' + (r.ok ? 'v-ok' : 'v-no');
+  $('#fvb').textContent = r.ok ? 'AUTHENTIC' : 'FORGED';
+  $('#fwhy').innerHTML = r.ok
+    ? 'The receipt reproduces: re-running the benchmark gives the same hash it claims. Nothing here trusted a signature — it re-ran the thing.'
+    : 'Rejected as <b>' + r.reason + '</b>. The receipt claimed a pass this repository does not currently produce, so re-running the benchmark caught it.';
+  $('#fdetail').textContent = JSON.stringify(r);
+}
+for (const id of ['repo','badge','claim']) { $('#'+id).addEventListener('input', render); $('#'+id).addEventListener('change', render); }
+render();
+</script></body></html>

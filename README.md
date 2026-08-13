@@ -1,5 +1,7 @@
 # proof-of-play
 
+**▶ Live: https://sjgant80-hub.github.io/proof-of-play/** — try to list something, then try to forge the receipt. The gate on that page is this repo's real `proveRepo`/`verify`, inlined verbatim.
+
 > The empirical filter for a marketplace of AI-built tools. **No listing without a reproducible,
 > un-forgeable proof that the tool's repository passes a benchmark.** The anti-lemons gate.
 
