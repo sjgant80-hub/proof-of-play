@@ -1,0 +1,14 @@
+[
+  {
+    "line": 119,
+    "mutation": ">= → >",
+    "snippet": "const arg = (k, d) => { const i = list.indexOf(k); return i >= 0 ? list[i + 1] : d; };",
+    "reason": "Equivalent. This asks whether a flag appears in the argument list at all. The two versions differ only when indexOf returns exactly 0, which would mean the flag is the very first element of argv — and the first element of argv is always the path to the node executable, with the script second and the command third. No invocation, real or contrived through the exported parser, can place a flag at index zero. That the flag is read when present and falls back when absent is asserted in the parseArgs tests."
+  },
+  {
+    "line": 125,
+    "mutation": "|| → &&",
+    "snippet": "const assess = assessorRunner(arg('--assessor', process.env.PROOF_ASSESSOR || 'acg-assesso",
+    "reason": "Equivalent, and it reveals that the default is written twice. When no --assessor flag and no environment variable are given, the original passes the literal default path to assessorRunner; the mutant passes undefined, and assessorRunner then applies its OWN default parameter, which is the identical expression. Both paths therefore end at the same assessor. The duplication is harmless but real: the CLI copy could be deleted entirely and nothing would change. That the environment variable is read, and that an explicit path beats it, are both asserted against a working assessor on disk in cli.test.mjs."
+  }
+]

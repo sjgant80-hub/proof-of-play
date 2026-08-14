@@ -12,3 +12,13 @@ jobs:
           node-version: '20'
       - name: the gate proves itself
         run: npm test
+
+      # ⚑ AND THE GATE IS NOW GATED ITSELF. This repo's whole claim is "no listing without a
+      # reproducible, un-forgeable pass". It sat at works — ten tests, green, no mutation gate —
+      # while 21 of 34 mutants survived. A gate with no gate of its own is the lemon it exists to
+      # catch. Pinned: an unpinned gate is a gate somebody else can change.
+      - name: witness — try to break the gate's own tests
+        run: |
+          git clone --depth 1 --branch v0.2 https://github.com/sjgant80-hub/witness.git /tmp/witness
+          node /tmp/witness/witness.mjs mutate filter.mjs \
+            --cap 400 --baseline witness.filter.baseline.json --test "npm test"

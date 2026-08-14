@@ -46,6 +46,13 @@ export const defaultPolicy = (proof) => proof.verdict.badge === true;
 // deliberately NOT part of the trust check — authenticity rests on the reproducible hash alone.
 export function proveRepo(repoPath, { assess = assessorRunner(), policy = defaultPolicy, provedAt } = {}) {
   const v = assess(repoPath);
+  // ⚑ REFUSE TO MINT WHAT CANNOT BE VERIFIED. assessorRunner already rejects a verdict with no hash
+  // or no badge — but the assessor is injectable, and anything supplied through that door skipped the
+  // check entirely. A proof with no hash anchors nothing: verify() would later call it malformed, so
+  // minting it produces a token that looks like evidence and can never be redeemed. Better to fail
+  // where the fault is than to hand somebody a receipt for nothing.
+  if (v == null || typeof v !== 'object') throw new Error(`benchmark verdict for ${repoPath} is not a verdict`);
+  if (v.hash == null || v.badge == null) throw new Error(`benchmark verdict for ${repoPath} is missing its hash or badge`);
   const proof = {
     v: PROOF_VERSION,
     repo: basename(String(repoPath).replace(/[\\/]+$/, '')),
@@ -104,9 +111,17 @@ export function filterListings(listings, {
 }
 
 // ── CLI ────────────────────────────────────────────────────────────────────
-function cli(argv) {
-  const arg = (k, d) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : d; };
-  const cmd = argv[2];
+// ⚑ EXPORTED SO IT CAN BE TESTED. The command line was the only part of this file no test touched,
+// and a flag that silently stops being read is exactly the fault nobody notices until the day it
+// matters: --assessor pointing at the wrong benchmark still prints a confident verdict.
+export function parseArgs(argv) {
+  const list = Array.isArray(argv) ? argv : [];
+  const arg = (k, d) => { const i = list.indexOf(k); return i >= 0 ? list[i + 1] : d; };
+  return { cmd: list[2], arg };
+}
+
+export function cli(argv) {
+  const { cmd, arg } = parseArgs(argv);
   const assess = assessorRunner(arg('--assessor', process.env.PROOF_ASSESSOR || 'acg-assessor/assessor.mjs'));
 
   if (cmd === 'prove') {
