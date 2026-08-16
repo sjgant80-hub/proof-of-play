@@ -43,7 +43,7 @@
  <h1>proof-of-play<span class="d">.</span></h1>
  <p class="lede">No listing without a <b>reproducible, un-forgeable proof</b> that the tool's repository passes a benchmark. No trusted signer, no authority, no manufactured scarcity.</p>
  <div class="stats">
-  <span class="stat ok"><b>155</b> lines of kernel, live on this page</span>
+  <span class="stat ok"><b>280</b> lines of kernel, live on this page</span>
   <span class="stat">decision logic is the real thing</span>
   <span class="stat">works offline</span>
  </div>
@@ -84,7 +84,18 @@ comes from the benchmark's own content-addressed hash, and a proof whose hash do
 that claims <code>admissible: true</code> and carries the hash a passing repo would have. Set the benchmark to
 <b>failed</b> and watch the forgery get caught — not by a signature check, but because re-running the benchmark
 produces a different hash than the receipt claims.</p>
+<p class="note"><b>And watch what it is willing to say.</b> A receipt can fail to verify for three
+unrelated reasons — the marketplace upgraded its benchmark, the seller's code moved on, or the receipt
+was fabricated — and this panel used to print <b>FORGED</b> for all three. Change the benchmark version
+below to something the receipt was not minted against: nothing about the repository has changed, and the
+refusal says so. A gate that calls an honest seller a forger is not usable by honest sellers.</p>
 <div class="panel">
+  <label>benchmark version the verifier is running
+    <select id="bench">
+      <option value="fp-1">fp-1 — the version the receipt was minted against</option>
+      <option value="fp-2">fp-2 — the marketplace upgraded since</option>
+    </select>
+  </label>
   <div class="out">
     <div id="fvb" class="vb v-ok">AUTHENTIC</div>
     <div class="why"><span id="fwhy"></span><div class="mono" id="fdetail"></div></div>
@@ -167,6 +178,13 @@ const defaultPolicy = (proof) => proof.verdict.badge === true;
 // deliberately NOT part of the trust check — authenticity rests on the reproducible hash alone.
 function proveRepo(repoPath, { assess = assessorRunner(), policy = defaultPolicy, provedAt } = {}) {
   const v = assess(repoPath);
+  // ⚑ REFUSE TO MINT WHAT CANNOT BE VERIFIED. assessorRunner already rejects a verdict with no hash
+  // or no badge — but the assessor is injectable, and anything supplied through that door skipped the
+  // check entirely. A proof with no hash anchors nothing: verify() would later call it malformed, so
+  // minting it produces a token that looks like evidence and can never be redeemed. Better to fail
+  // where the fault is than to hand somebody a receipt for nothing.
+  if (v == null || typeof v !== 'object') throw new Error(`benchmark verdict for ${repoPath} is not a verdict`);
+  if (v.hash == null || v.badge == null) throw new Error(`benchmark verdict for ${repoPath} is missing its hash or badge`);
   const proof = {
     v: PROOF_VERSION,
     repo: basename(String(repoPath).replace(/[\\/]+$/, '')),
@@ -185,22 +203,127 @@ function proveRepo(repoPath, { assess = assessorRunner(), policy = defaultPolicy
 }
 
 // ── verify ───────────────────────────────────────────────────────────────
-// Re-run the benchmark and confirm the proof is authentic. A forged proof — one claiming a pass
-// the repo does not currently produce — fails here. This is why admission cannot be faked.
+//
+// WHAT A FAILED VERIFICATION IS ACTUALLY ABOUT.
+//
+// ⚑ This returned `hash-mismatch` for three unrelated situations, and the page rendered every one
+// of them as "the receipt claimed a pass this repository does not currently produce" — an
+// accusation. The three:
+//
+//   · the two sides ran DIFFERENT VERSIONS OF THE BENCHMARK. Nothing to do with the seller; it is
+//     the marketplace's own instrument that moved, or the verifier passed the wrong --assessor.
+//   · the REPOSITORY MOVED since the proof was minted. A commit landed. Entirely normal, and the
+//     remedy is to re-prove, not to be accused of fraud.
+//   · the ANCHOR DOES NOT CORRESPOND TO THE VERDICT. The forgery shape.
+//
+// A marketplace gate that cannot tell a seller "your code changed, re-prove" from "your receipt is
+// fabricated" is not usable by honest sellers, and the trust rail's value is that honest parties
+// can rely on it. One word covering all three is a worse instrument than three words.
+//
+// ⚑ WORSE: the distinction this file claimed to make was UNREACHABLE. `benchmark-version-changed`
+// sat BELOW the hash check, and acg-assessor computes its hash over a verdict object that contains
+// specFingerprint — so any change to the benchmark changes the hash, the hash check fires first,
+// and the fingerprint branch is never reached with a real benchmark. It looked covered because the
+// test stub returns a hash of `'h:' + repoPath`, decoupled from its own spec, which is a benchmark
+// that cannot exist. And test.mjs contained
+//     assert.ok(r.reason === 'hash-mismatch' || r.reason === 'benchmark-version-changed')
+// — an assertion that accepts either answer, which is what writing down an ambiguity looks like
+// instead of resolving it. The instrument check now runs FIRST, where it can actually fire.
+//
+// (That assertion is described here rather than quoted. A verbatim quotation puts operators into a
+// comment, and witness generated mutants from them that no test could ever kill, so the file read as
+// test-theatre because of a sentence about the code. witness v0.4 masks comments; the prose stays
+// because it is clearer than the quotation was.)
+//
+// Every branch below still returns ok:false. The distinction is about the EXPLANATION owed to
+// whoever is being refused — never about letting anything in. "It is only drift" must never become
+// a door.
+const CAUSE = Object.freeze({
+  input: 'input',              // what was handed in is not a proof
+  benchmark: 'benchmark',      // the two sides did not run the same instrument
+  repository: 'repository',    // the code moved since the proof was minted
+  unattributed: 'unattributed',// the mismatch is real and re-running cannot say why
+  proof: 'proof',              // the proof claims more than its own verdict supports
+});
+
+// The headline figures a proof records, so a later verification can say WHAT moved rather than only
+// that something did.
+const FIGURES = ['badge', 'core', 'nonCore', 'dominantTell'];
+const figuresOf = (fresh) => ({
+  badge: fresh?.badge === true,
+  core: fresh?.summary?.core ?? null,
+  nonCore: fresh?.summary?.nonCore ?? null,
+  dominantTell: fresh?.dominantTell ?? null,
+});
+
+/**
+ * Which recorded figures differ between a proof's verdict and a fresh one.
+ * `null` means the proof recorded nothing comparable — not that nothing moved. The two must not
+ * collapse into one another, because "nothing moved" is evidence and "I cannot tell" is not.
+ */
+function movedFigures(proofVerdict, fresh) {
+  if (!proofVerdict || typeof proofVerdict !== 'object') return null;
+  const now = figuresOf(fresh);
+  return FIGURES.filter(k => proofVerdict[k] !== now[k]);
+}
+
 function verify(proof, repoPath, { assess = assessorRunner() } = {}) {
   if (!proof || typeof proof !== 'object' || !proof.hash)
-    return { ok: false, reason: 'malformed-proof' };
-  let fresh;
-  try { fresh = assess(repoPath); } catch (e) { return { ok: false, reason: 'benchmark-error', detail: String(e.message || e) }; }
+    return { ok: false, cause: CAUSE.input, reason: 'malformed-proof' };
 
-  if (fresh.hash !== proof.hash)
-    return { ok: false, reason: 'hash-mismatch', claimed: proof.hash, actual: fresh.hash };
-  if (proof.benchmark?.fingerprint && fresh.specFingerprint && proof.benchmark.fingerprint !== fresh.specFingerprint)
-    return { ok: false, reason: 'benchmark-version-changed', claimed: proof.benchmark.fingerprint, actual: fresh.specFingerprint };
+  // ⚑ NOTHING HERE EVER CHECKED THE PROOF WAS FOR THIS REPOSITORY. proveRepo() records `repo` and
+  // verify() then never looked at it, so a proof transferred between repos was caught only by the
+  // hash — i.e. only when the two repos differ in content. The suite has a test named "a proof does
+  // not transfer between repos" that passed for exactly that incidental reason, which is the same
+  // fault this file's own gate.test.mjs header describes: a test passing through a check other than
+  // the one it names. Take a passing repo's proof and present it for a byte-identical FORK and it
+  // verified, because the verdict is deterministic over content and the two contents are the same.
+  // In a fork-tree economy that is not a hypothetical.
+  //
+  // The name can only ever REFUSE. Two unrelated repos can share a basename, so a match proves
+  // nothing — the reproducing hash is still what does the work. A one-line check that closes a real
+  // transfer and claims nothing beyond it.
+  const claimedRepo = typeof proof.repo === 'string' ? proof.repo : null;
+  const actualRepo = basename(String(repoPath ?? '').replace(/[\\/]+$/, ''));
+  if (claimedRepo !== null && claimedRepo !== actualRepo)
+    return { ok: false, cause: CAUSE.proof, reason: 'repo-mismatch', claimed: claimedRepo, actual: actualRepo };
+
+  let fresh;
+  try { fresh = assess(repoPath); }
+  catch (e) { return { ok: false, cause: CAUSE.benchmark, reason: 'benchmark-error', detail: String(e.message || e) }; }
+
+  const claimedFp = proof.benchmark?.fingerprint ?? null;
+  const actualFp = fresh?.specFingerprint ?? null;
+  const sameInstrument = claimedFp !== null && actualFp !== null && claimedFp === actualFp;
+
+  // FIRST, because a changed instrument is not evidence about the repository and must not be
+  // reported as though it were.
+  if (claimedFp !== null && actualFp !== null && claimedFp !== actualFp)
+    return { ok: false, cause: CAUSE.benchmark, reason: 'benchmark-changed', claimed: claimedFp, actual: actualFp };
+
+  if (fresh?.hash !== proof.hash) {
+    const moved = movedFigures(proof.verdict, fresh);
+    if (moved && moved.length)
+      return { ok: false, cause: CAUSE.repository, reason: 'verdict-changed', claimed: proof.hash, actual: fresh?.hash ?? null, moved };
+    // The anchor differs while everything the proof recorded still agrees. That is the shape of a
+    // fabricated hash — and ALSO the shape of a change that did not move the headline figures, since
+    // the anchor covers the whole verdict and these four fields are a summary of it. Re-running
+    // cannot separate those, so this does not say "forged". Naming a state the tool cannot
+    // distinguish is how a gate starts making accusations it cannot support.
+    return {
+      ok: false, cause: sameInstrument ? CAUSE.unattributed : CAUSE.benchmark,
+      reason: sameInstrument ? 'anchor-mismatch' : 'unattributable-mismatch',
+      claimed: proof.hash, actual: fresh?.hash ?? null,
+      detail: sameInstrument
+        ? 'the anchor does not reproduce while every recorded figure still agrees — either a change that did not move them, or a hash that was never produced by this benchmark. Re-running cannot tell these apart.'
+        : 'the anchor does not reproduce and at least one side does not identify its benchmark version, so the mismatch cannot be attributed to the repository or to the instrument',
+    };
+  }
+
   // belt and braces: an admissibility claim must match what the verdict actually supports
   if (proof.admissible === true && fresh.badge !== true)
-    return { ok: false, reason: 'admissibility-overclaim' };
-  return { ok: true, reason: 'authentic' };
+    return { ok: false, cause: CAUSE.proof, reason: 'admissibility-overclaim' };
+  return { ok: true, cause: null, reason: 'authentic' };
 }
 
 // ── filter ───────────────────────────────────────────────────────────────
@@ -225,9 +348,17 @@ function filterListings(listings, {
 }
 
 // ── CLI ────────────────────────────────────────────────────────────────────
+// ⚑ EXPORTED SO IT CAN BE TESTED. The command line was the only part of this file no test touched,
+// and a flag that silently stops being read is exactly the fault nobody notices until the day it
+// matters: --assessor pointing at the wrong benchmark still prints a confident verdict.
+function parseArgs(argv) {
+  const list = Array.isArray(argv) ? argv : [];
+  const arg = (k, d) => { const i = list.indexOf(k); return i >= 0 ? list[i + 1] : d; };
+  return { cmd: list[2], arg };
+}
+
 function cli(argv) {
-  const arg = (k, d) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : d; };
-  const cmd = argv[2];
+  const { cmd, arg } = parseArgs(argv);
   const assess = assessorRunner(arg('--assessor', process.env.PROOF_ASSESSOR || 'acg-assessor/assessor.mjs'));
 
   if (cmd === 'prove') {
@@ -243,7 +374,12 @@ function cli(argv) {
     if (!proofPath || !repo) { console.error('usage: verify <proof.json> <repo> [--assessor path]'); process.exit(2); }
     const proof = JSON.parse(readFileSync(proofPath, 'utf8'));
     const r = verify(proof, repo, { assess });
-    console.log(`${r.ok ? '✓ AUTHENTIC' : '✗ ' + r.reason.toUpperCase()}` + (r.actual ? `  claimed ${r.claimed} · actual ${r.actual}` : ''));
+    // The cause is the part a seller can act on: their code, the marketplace's benchmark, or the
+    // receipt itself. Printing only the reason left them to guess which of the three it was.
+    console.log(`${r.ok ? '✓ AUTHENTIC' : '✗ ' + r.reason.toUpperCase() + ' [' + r.cause + ']'}`
+      + (r.actual ? `  claimed ${r.claimed} · actual ${r.actual}` : ''));
+    if (r.moved && r.moved.length) console.log(`  moved: ${r.moved.join(', ')}`);
+    if (r.detail) console.log(`  ${r.detail}`);
     process.exit(r.ok ? 0 : 1);
   }
 
@@ -271,7 +407,13 @@ const $ = s => document.querySelector(s);
 function render(){
   const passed = $('#badge').value === 'true';
   // The real kernel, with the assessor injected — exactly how it is meant to be used.
-  const assess = () => ({ badge: passed, hash: 'v-' + (passed ? 'a91c3f77' : '00000000'), benchmark: 'acg-assessor' });
+  // A fingerprint and a summary, because verify() uses both to work out WHO a mismatch belongs to.
+  // Without them every refusal collapses to "cannot attribute", which is honest but shows nothing.
+  const assess = () => ({
+    badge: passed, hash: 'v-' + (passed ? 'a91c3f77' : '00000000'), benchmark: 'acg-assessor',
+    spec: 'acg-1', specFingerprint: $('#bench').value,
+    summary: { core: passed ? 10 : 4, nonCore: passed ? 96 : 40 }, dominantTell: passed ? null : 'UNOPENED',
+  });
   const repo = $('#repo').value || 'unnamed';
   const proof = proveRepo(repo, { assess, provedAt: '2026-08-13' });
   // Read the gate's OWN published field. Re-deriving the verdict in page code is how a page ends up
@@ -286,16 +428,29 @@ function render(){
 
   // The forgery: a receipt asserting the pass a passing repo would have earned, handed to the real
   // verify() against the assessor you configured above.
-  const forged = { v: proof.v, repo, benchmark: proof.benchmark, hash: 'v-a91c3f77',
-                   verdict: { badge: true, core: 4, nonCore: 96, dominantTell: null }, admissible: true };
+  const forged = { v: proof.v, repo, benchmark: { spec: 'acg-1', fingerprint: 'fp-1' }, hash: 'v-a91c3f77',
+                   verdict: { badge: true, core: 10, nonCore: 96, dominantTell: null }, admissible: true };
   const r = verify(forged, repo, { assess });
   $('#fvb').className = 'vb ' + (r.ok ? 'v-ok' : 'v-no');
-  $('#fvb').textContent = r.ok ? 'AUTHENTIC' : 'FORGED';
+  // ⚑ This label was a two-way choice between AUTHENTIC and FORGED, and every refusal was narrated
+  // as the receipt having claimed a pass the repository does not produce — an accusation, printed
+  // for a benchmark upgrade and an ordinary commit alike. The kernel now publishes WHO the
+  // mismatch belongs to, and the page
+  // reads that field rather than deciding again in page code, which is how a surface ends up
+  // confidently narrating a reason the kernel never gave.
+  $('#fvb').textContent = r.ok ? 'AUTHENTIC' : (r.cause === 'proof' ? 'REFUSED · THE RECEIPT' : 'REFUSED');
+  const BECAUSE = {
+    benchmark: 'the verifier and the receipt ran <b>different versions of the benchmark</b>. Nothing here is a claim about the repository — the marketplace's own instrument moved. Re-mint against the current version.',
+    repository: 'the <b>repository has changed</b> since the receipt was minted: ' + (r.moved || []).join(', ') + ' no longer match. Ordinary, and the remedy is to re-prove — not an accusation.',
+    unattributed: 'the anchor does not reproduce while every recorded figure still agrees. That is the shape of a fabricated hash <i>and</i> of a change too small to move those figures, and <b>re-running cannot tell them apart</b> — so it does not pretend to.',
+    proof: 'the receipt claims more than its own verdict supports, or was minted for a different repository. This one is about the receipt.',
+    input: 'what was handed in is not a proof at all.',
+  };
   $('#fwhy').innerHTML = r.ok
     ? 'The receipt reproduces: re-running the benchmark gives the same hash it claims. Nothing here trusted a signature — it re-ran the thing.'
-    : 'Rejected as <b>' + r.reason + '</b>. The receipt claimed a pass this repository does not currently produce, so re-running the benchmark caught it.';
+    : 'Refused as <b>' + r.reason + '</b> — ' + (BECAUSE[r.cause] || 'no cause was given.');
   $('#fdetail').textContent = JSON.stringify(r);
 }
-for (const id of ['repo','badge','claim']) { $('#'+id).addEventListener('input', render); $('#'+id).addEventListener('change', render); }
+for (const id of ['repo','badge','claim','bench']) { $('#'+id).addEventListener('input', render); $('#'+id).addEventListener('change', render); }
 render();
 </script></body></html>

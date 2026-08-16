@@ -50,7 +50,31 @@ is **excluded from the trust check** so proving stays deterministic.
 ## API
 
 - `proveRepo(repoPath, { assess, policy, provedAt })` → a Proof-of-Play.
-- `verify(proof, repoPath, { assess })` → `{ ok, reason }`. Authentic only if the hash reproduces
+- `verify(proof, repoPath, { assess })` → `{ ok, cause, reason, ... }`. Authentic only if the hash
+  reproduces. **`cause` names what the refusal is about**, because a receipt can fail to verify for
+  reasons that have nothing to do with the seller, and a marketplace that reports all of them with one
+  word is unusable by honest sellers. Every cause is still a refusal — the distinction is about the
+  explanation owed, never a way in.
+
+  | `cause` | `reason` | what it means |
+  |---|---|---|
+  | `input` | `malformed-proof` | what was handed in is not a proof |
+  | `proof` | `repo-mismatch` | the receipt was minted for a different repository |
+  | `proof` | `admissibility-overclaim` | the receipt claims more than its own verdict supports |
+  | `benchmark` | `benchmark-error` | the benchmark could not be run |
+  | `benchmark` | `benchmark-changed` | the two sides ran different versions of the benchmark |
+  | `benchmark` | `unattributable-mismatch` | the anchor differs and at least one side will not name its benchmark version |
+  | `repository` | `verdict-changed` | the code moved; `moved` lists which recorded figures did |
+  | `unattributed` | `anchor-mismatch` | same benchmark, every recorded figure agrees, anchor does not reproduce |
+
+  `anchor-mismatch` is deliberately not called forgery. It is the shape of a fabricated hash and also
+  the shape of a change too small to move the recorded figures, and re-running cannot separate them.
+  Naming a state the tool cannot distinguish is how a gate starts making accusations it cannot support.
+
+  The `repo` name check can only ever REFUSE, never admit: two unrelated repositories can share a
+  basename, so a match proves nothing and the reproducing hash still does the work. It exists because
+  the hash alone caught a transferred proof only when the two repositories differed in content — and a
+  byte-identical fork is the everyday case in a fork-tree economy
   (and the admissibility claim matches the verdict).
 - `filterListings(listings, { assess, policy, resolveRepo })` → `{ admitted, rejected, proofs }`.
   The gate: partition listings by whether their repository passes.

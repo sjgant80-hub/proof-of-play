@@ -17,7 +17,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { cli, assessorRunner } from './filter.mjs';
+import { cli, assessorRunner, parseArgs } from './filter.mjs';
 
 // A stand-in benchmark: prints a verdict for any repo, and fails the one called "bad".
 const ASSESSOR = `
@@ -76,12 +76,88 @@ test('⚑ verify accepts an authentic proof and rejects a doctored one', () => {
   writeFileSync(path, JSON.stringify(proof));
   assert.equal(run(['node', 'f', 'verify', path, repo, '--assessor', assessor]).code, 0, 'the real proof verifies');
 
-  // change one character of the hash — the anchor the whole claim rests on
+  // change one character of the hash — the anchor the whole claim rests on. Nothing else moves, so
+  // re-running cannot say whether it was fabricated or whether the repo changed too little to shift
+  // the recorded figures, and the CLI says exactly that rather than picking one.
   writeFileSync(path, JSON.stringify({ ...proof, hash: 'h:something-else' }));
   const bad = run(['node', 'f', 'verify', path, repo, '--assessor', assessor]);
   assert.notEqual(bad.code, 0, '⚑ and a doctored one exits non-zero — a gate that returns success on a forgery is not a gate');
-  assert.match(bad.out + bad.err, /HASH-MISMATCH/i);
+  assert.match(bad.out + bad.err, /ANCHOR-MISMATCH/i);
+  assert.match(bad.out, /\[unattributed\]/, 'the cause is printed — it is the part a seller can act on');
+  assert.match(bad.out, /cannot tell these apart/, 'and the honest limit is spelled out, not implied');
   rmSync(dir, { recursive: true, force: true });
+});
+
+test('⚑ the CLI blames the right party: benchmark, repository, or the receipt', () => {
+  const { dir, assessor } = workspace();
+  const repo = join(dir, 'good-repo');
+  const proof = JSON.parse(run(['node', 'f', 'prove', repo, '--assessor', assessor]).out);
+  const path = join(dir, 'proof.json');
+
+  // the receipt is for a different repository
+  writeFileSync(path, JSON.stringify({ ...proof, repo: 'some-other-repo' }));
+  const transferred = run(['node', 'f', 'verify', path, repo, '--assessor', assessor]);
+  assert.notEqual(transferred.code, 0);
+  assert.match(transferred.out, /REPO-MISMATCH \[proof\]/);
+
+  // the benchmark moved under it
+  writeFileSync(path, JSON.stringify({ ...proof, benchmark: { ...proof.benchmark, fingerprint: 'fp-from-last-year' } }));
+  const stale = run(['node', 'f', 'verify', path, repo, '--assessor', assessor]);
+  assert.notEqual(stale.code, 0);
+  assert.match(stale.out, /BENCHMARK-CHANGED \[benchmark\]/,
+    'a benchmark upgrade must not be reported to the seller as though their code were at fault');
+
+  // the recorded verdict no longer matches the repository
+  writeFileSync(path, JSON.stringify({ ...proof, hash: 'h:x', verdict: { ...proof.verdict, core: 'not what it is now' } }));
+  const moved = run(['node', 'f', 'verify', path, repo, '--assessor', assessor]);
+  assert.notEqual(moved.code, 0);
+  assert.match(moved.out, /VERDICT-CHANGED \[repository\]/);
+  assert.match(moved.out, /moved: core/, 'and it says which figure moved');
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('a flag in the first position is still read', () => {
+  // `indexOf` returns 0 for a flag at the front, and a `> 0` test would silently drop it and fall
+  // back to the default — the CLI would then run a DIFFERENT benchmark from the one asked for and
+  // print an equally confident verdict.
+  assert.equal(parseArgs(['--assessor', 'x.mjs']).arg('--assessor', 'fallback'), 'x.mjs');
+  assert.equal(parseArgs(['node', 'f', 'prove', 'r', '--assessor', 'y.mjs']).arg('--assessor', 'fallback'), 'y.mjs');
+  assert.equal(parseArgs(['node', 'f', 'prove', 'r']).arg('--assessor', 'fallback'), 'fallback');
+  assert.equal(parseArgs(null).arg('--assessor', 'fallback'), 'fallback');
+});
+
+test('⚑ $PROOF_ASSESSOR selects the benchmark when no flag is given', () => {
+  // The environment override is the documented way to point at a different benchmark. If it stopped
+  // being read, every verdict would still print — computed by the wrong instrument.
+  const { dir, assessor } = workspace();
+  const repo = join(dir, 'good-repo');
+  const before = process.env.PROOF_ASSESSOR;
+  try {
+    process.env.PROOF_ASSESSOR = assessor;
+    const r = run(['node', 'f', 'prove', repo]);            // no --assessor flag
+    assert.equal(r.code, 0, 'the benchmark named by the environment was not used');
+    assert.equal(JSON.parse(r.out).benchmark.fingerprint, 'fp-1');
+
+    // and the same path through assessorRunner's own default parameter
+    const verdict = assessorRunner()(repo);
+    assert.equal(verdict.specFingerprint, 'fp-1');
+  } finally {
+    if (before === undefined) delete process.env.PROOF_ASSESSOR; else process.env.PROOF_ASSESSOR = before;
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('with no flag and no environment override, the documented default path is used', () => {
+  const before = process.env.PROOF_ASSESSOR;
+  try {
+    delete process.env.PROOF_ASSESSOR;
+    // Nothing at that path here, so the runner must fail NAMING it — proving which path it chose.
+    assert.throws(() => assessorRunner()('some-repo'), /some-repo/);
+    const r = run(['node', 'f', 'verify', 'nope.json', 'some-repo']);
+    assert.notEqual(r.code, 0);
+  } finally {
+    if (before !== undefined) process.env.PROOF_ASSESSOR = before;
+  }
 });
 
 test('verify without both arguments explains itself instead of guessing', () => {

@@ -71,22 +71,127 @@ export function proveRepo(repoPath, { assess = assessorRunner(), policy = defaul
 }
 
 // ── verify ───────────────────────────────────────────────────────────────
-// Re-run the benchmark and confirm the proof is authentic. A forged proof — one claiming a pass
-// the repo does not currently produce — fails here. This is why admission cannot be faked.
+//
+// WHAT A FAILED VERIFICATION IS ACTUALLY ABOUT.
+//
+// ⚑ This returned `hash-mismatch` for three unrelated situations, and the page rendered every one
+// of them as "the receipt claimed a pass this repository does not currently produce" — an
+// accusation. The three:
+//
+//   · the two sides ran DIFFERENT VERSIONS OF THE BENCHMARK. Nothing to do with the seller; it is
+//     the marketplace's own instrument that moved, or the verifier passed the wrong --assessor.
+//   · the REPOSITORY MOVED since the proof was minted. A commit landed. Entirely normal, and the
+//     remedy is to re-prove, not to be accused of fraud.
+//   · the ANCHOR DOES NOT CORRESPOND TO THE VERDICT. The forgery shape.
+//
+// A marketplace gate that cannot tell a seller "your code changed, re-prove" from "your receipt is
+// fabricated" is not usable by honest sellers, and the trust rail's value is that honest parties
+// can rely on it. One word covering all three is a worse instrument than three words.
+//
+// ⚑ WORSE: the distinction this file claimed to make was UNREACHABLE. `benchmark-version-changed`
+// sat BELOW the hash check, and acg-assessor computes its hash over a verdict object that contains
+// specFingerprint — so any change to the benchmark changes the hash, the hash check fires first,
+// and the fingerprint branch is never reached with a real benchmark. It looked covered because the
+// test stub returns a hash of `'h:' + repoPath`, decoupled from its own spec, which is a benchmark
+// that cannot exist. And test.mjs contained
+//     assert.ok(r.reason === 'hash-mismatch' || r.reason === 'benchmark-version-changed')
+// — an assertion that accepts either answer, which is what writing down an ambiguity looks like
+// instead of resolving it. The instrument check now runs FIRST, where it can actually fire.
+//
+// (That assertion is described here rather than quoted. A verbatim quotation puts operators into a
+// comment, and witness generated mutants from them that no test could ever kill, so the file read as
+// test-theatre because of a sentence about the code. witness v0.4 masks comments; the prose stays
+// because it is clearer than the quotation was.)
+//
+// Every branch below still returns ok:false. The distinction is about the EXPLANATION owed to
+// whoever is being refused — never about letting anything in. "It is only drift" must never become
+// a door.
+export const CAUSE = Object.freeze({
+  input: 'input',              // what was handed in is not a proof
+  benchmark: 'benchmark',      // the two sides did not run the same instrument
+  repository: 'repository',    // the code moved since the proof was minted
+  unattributed: 'unattributed',// the mismatch is real and re-running cannot say why
+  proof: 'proof',              // the proof claims more than its own verdict supports
+});
+
+// The headline figures a proof records, so a later verification can say WHAT moved rather than only
+// that something did.
+const FIGURES = ['badge', 'core', 'nonCore', 'dominantTell'];
+const figuresOf = (fresh) => ({
+  badge: fresh?.badge === true,
+  core: fresh?.summary?.core ?? null,
+  nonCore: fresh?.summary?.nonCore ?? null,
+  dominantTell: fresh?.dominantTell ?? null,
+});
+
+/**
+ * Which recorded figures differ between a proof's verdict and a fresh one.
+ * `null` means the proof recorded nothing comparable — not that nothing moved. The two must not
+ * collapse into one another, because "nothing moved" is evidence and "I cannot tell" is not.
+ */
+export function movedFigures(proofVerdict, fresh) {
+  if (!proofVerdict || typeof proofVerdict !== 'object') return null;
+  const now = figuresOf(fresh);
+  return FIGURES.filter(k => proofVerdict[k] !== now[k]);
+}
+
 export function verify(proof, repoPath, { assess = assessorRunner() } = {}) {
   if (!proof || typeof proof !== 'object' || !proof.hash)
-    return { ok: false, reason: 'malformed-proof' };
-  let fresh;
-  try { fresh = assess(repoPath); } catch (e) { return { ok: false, reason: 'benchmark-error', detail: String(e.message || e) }; }
+    return { ok: false, cause: CAUSE.input, reason: 'malformed-proof' };
 
-  if (fresh.hash !== proof.hash)
-    return { ok: false, reason: 'hash-mismatch', claimed: proof.hash, actual: fresh.hash };
-  if (proof.benchmark?.fingerprint && fresh.specFingerprint && proof.benchmark.fingerprint !== fresh.specFingerprint)
-    return { ok: false, reason: 'benchmark-version-changed', claimed: proof.benchmark.fingerprint, actual: fresh.specFingerprint };
+  // ⚑ NOTHING HERE EVER CHECKED THE PROOF WAS FOR THIS REPOSITORY. proveRepo() records `repo` and
+  // verify() then never looked at it, so a proof transferred between repos was caught only by the
+  // hash — i.e. only when the two repos differ in content. The suite has a test named "a proof does
+  // not transfer between repos" that passed for exactly that incidental reason, which is the same
+  // fault this file's own gate.test.mjs header describes: a test passing through a check other than
+  // the one it names. Take a passing repo's proof and present it for a byte-identical FORK and it
+  // verified, because the verdict is deterministic over content and the two contents are the same.
+  // In a fork-tree economy that is not a hypothetical.
+  //
+  // The name can only ever REFUSE. Two unrelated repos can share a basename, so a match proves
+  // nothing — the reproducing hash is still what does the work. A one-line check that closes a real
+  // transfer and claims nothing beyond it.
+  const claimedRepo = typeof proof.repo === 'string' ? proof.repo : null;
+  const actualRepo = basename(String(repoPath ?? '').replace(/[\\/]+$/, ''));
+  if (claimedRepo !== null && claimedRepo !== actualRepo)
+    return { ok: false, cause: CAUSE.proof, reason: 'repo-mismatch', claimed: claimedRepo, actual: actualRepo };
+
+  let fresh;
+  try { fresh = assess(repoPath); }
+  catch (e) { return { ok: false, cause: CAUSE.benchmark, reason: 'benchmark-error', detail: String(e.message || e) }; }
+
+  const claimedFp = proof.benchmark?.fingerprint ?? null;
+  const actualFp = fresh?.specFingerprint ?? null;
+  const sameInstrument = claimedFp !== null && actualFp !== null && claimedFp === actualFp;
+
+  // FIRST, because a changed instrument is not evidence about the repository and must not be
+  // reported as though it were.
+  if (claimedFp !== null && actualFp !== null && claimedFp !== actualFp)
+    return { ok: false, cause: CAUSE.benchmark, reason: 'benchmark-changed', claimed: claimedFp, actual: actualFp };
+
+  if (fresh?.hash !== proof.hash) {
+    const moved = movedFigures(proof.verdict, fresh);
+    if (moved && moved.length)
+      return { ok: false, cause: CAUSE.repository, reason: 'verdict-changed', claimed: proof.hash, actual: fresh?.hash ?? null, moved };
+    // The anchor differs while everything the proof recorded still agrees. That is the shape of a
+    // fabricated hash — and ALSO the shape of a change that did not move the headline figures, since
+    // the anchor covers the whole verdict and these four fields are a summary of it. Re-running
+    // cannot separate those, so this does not say "forged". Naming a state the tool cannot
+    // distinguish is how a gate starts making accusations it cannot support.
+    return {
+      ok: false, cause: sameInstrument ? CAUSE.unattributed : CAUSE.benchmark,
+      reason: sameInstrument ? 'anchor-mismatch' : 'unattributable-mismatch',
+      claimed: proof.hash, actual: fresh?.hash ?? null,
+      detail: sameInstrument
+        ? 'the anchor does not reproduce while every recorded figure still agrees — either a change that did not move them, or a hash that was never produced by this benchmark. Re-running cannot tell these apart.'
+        : 'the anchor does not reproduce and at least one side does not identify its benchmark version, so the mismatch cannot be attributed to the repository or to the instrument',
+    };
+  }
+
   // belt and braces: an admissibility claim must match what the verdict actually supports
   if (proof.admissible === true && fresh.badge !== true)
-    return { ok: false, reason: 'admissibility-overclaim' };
-  return { ok: true, reason: 'authentic' };
+    return { ok: false, cause: CAUSE.proof, reason: 'admissibility-overclaim' };
+  return { ok: true, cause: null, reason: 'authentic' };
 }
 
 // ── filter ───────────────────────────────────────────────────────────────
@@ -137,7 +242,12 @@ export function cli(argv) {
     if (!proofPath || !repo) { console.error('usage: verify <proof.json> <repo> [--assessor path]'); process.exit(2); }
     const proof = JSON.parse(readFileSync(proofPath, 'utf8'));
     const r = verify(proof, repo, { assess });
-    console.log(`${r.ok ? '✓ AUTHENTIC' : '✗ ' + r.reason.toUpperCase()}` + (r.actual ? `  claimed ${r.claimed} · actual ${r.actual}` : ''));
+    // The cause is the part a seller can act on: their code, the marketplace's benchmark, or the
+    // receipt itself. Printing only the reason left them to guess which of the three it was.
+    console.log(`${r.ok ? '✓ AUTHENTIC' : '✗ ' + r.reason.toUpperCase() + ' [' + r.cause + ']'}`
+      + (r.actual ? `  claimed ${r.claimed} · actual ${r.actual}` : ''));
+    if (r.moved && r.moved.length) console.log(`  moved: ${r.moved.join(', ')}`);
+    if (r.detail) console.log(`  ${r.detail}`);
     process.exit(r.ok ? 0 : 1);
   }
 

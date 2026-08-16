@@ -3,11 +3,41 @@
 // ⚑ Both kernels take their dependencies INJECTED (assess / prove / verify / forge), which is exactly
 // what makes them runnable in a browser: the decision logic is the real thing, and only the I/O it
 // would have reached for is stubbed. The page says so rather than implying it ran a benchmark.
-import { readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const W = 'C:/Users/sjgan/AppData/Local/Temp/claude/C--Users-sjgan--claude/a6d00f92-259d-487d-bb95-bf9f2524ffac/scratchpad';
+// ⚑ THIS WAS AN ABSOLUTE PATH INTO ONE MACHINE'S SCRATCH DIRECTORY. The script ships in the repo and
+// claims to generate the repo's page, and it read and wrote somewhere else entirely — so running it
+// in a clone regenerated a stale copy that happened to exist beside it and left index.html untouched,
+// while on any other machine it would fail outright. The page that a visitor exercises is supposed to
+// BE the gated kernel; a generator that cannot be pointed at its own repository is not evidence of
+// that, and nothing checked. Paths are resolved from this file now, and CI regenerates and diffs.
+const HERE = dirname(fileURLToPath(import.meta.url));
+const CHECK = process.argv.includes('--check');
+
+// The konomify page is built from its own repository, cloned or checked out beside this one. It is
+// skipped with a message when it is not there rather than taking the whole build down — but it is
+// never silently skipped, because a build step that quietly does nothing reads exactly like one that
+// worked.
+const SIBLING = (name) => join(HERE, '..', name);
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+// Write the page — or, under --check, refuse when what is committed is not what the kernel produces.
+// A page that claims to run the gated kernel and quietly stopped doing so is the exact failure this
+// generator exists to prevent, and it is invisible until somebody reads the file.
+function emit(target, html, label) {
+  if (CHECK) {
+    const current = existsSync(target) ? readFileSync(target, 'utf8') : null;
+    if (current === html) { console.log(`${label}/index.html is up to date with the kernel`); return; }
+    console.error(current === null
+      ? `${label}/index.html is missing — run: node build-page.mjs`
+      : `${label}/index.html has DRIFTED from the kernel it claims to run — run: node build-page.mjs`);
+    process.exitCode = 1;
+    return;
+  }
+  writeFileSync(target, html);
+}
 
 // Node imports the kernels reach for but which the demo never triggers, because every call path the
 // page exercises has its dependency injected. Shimmed to throw, so a path that DID reach I/O is loud.
@@ -101,7 +131,7 @@ ${script}
 
 // ── proof-of-play ────────────────────────────────────────────────────────────────────────────────
 {
-  const src = readFileSync(join(W, 'proof-of-play', 'filter.mjs'), 'utf8');
+  const src = readFileSync(join(HERE, 'filter.mjs'), 'utf8');
   const kernel = SHIM + strip(src);
   const lines = kernel.split('\n').length;
 
@@ -141,7 +171,18 @@ comes from the benchmark's own content-addressed hash, and a proof whose hash do
 that claims <code>admissible: true</code> and carries the hash a passing repo would have. Set the benchmark to
 <b>failed</b> and watch the forgery get caught — not by a signature check, but because re-running the benchmark
 produces a different hash than the receipt claims.</p>
+<p class="note"><b>And watch what it is willing to say.</b> A receipt can fail to verify for three
+unrelated reasons — the marketplace upgraded its benchmark, the seller's code moved on, or the receipt
+was fabricated — and this panel used to print <b>FORGED</b> for all three. Change the benchmark version
+below to something the receipt was not minted against: nothing about the repository has changed, and the
+refusal says so. A gate that calls an honest seller a forger is not usable by honest sellers.</p>
 <div class="panel">
+  <label>benchmark version the verifier is running
+    <select id="bench">
+      <option value="fp-1">fp-1 — the version the receipt was minted against</option>
+      <option value="fp-2">fp-2 — the marketplace upgraded since</option>
+    </select>
+  </label>
   <div class="out">
     <div id="fvb" class="vb v-ok">AUTHENTIC</div>
     <div class="why"><span id="fwhy"></span><div class="mono" id="fdetail"></div></div>
@@ -166,7 +207,13 @@ const $ = s => document.querySelector(s);
 function render(){
   const passed = $('#badge').value === 'true';
   // The real kernel, with the assessor injected — exactly how it is meant to be used.
-  const assess = () => ({ badge: passed, hash: 'v-' + (passed ? 'a91c3f77' : '00000000'), benchmark: 'acg-assessor' });
+  // A fingerprint and a summary, because verify() uses both to work out WHO a mismatch belongs to.
+  // Without them every refusal collapses to "cannot attribute", which is honest but shows nothing.
+  const assess = () => ({
+    badge: passed, hash: 'v-' + (passed ? 'a91c3f77' : '00000000'), benchmark: 'acg-assessor',
+    spec: 'acg-1', specFingerprint: $('#bench').value,
+    summary: { core: passed ? 10 : 4, nonCore: passed ? 96 : 40 }, dominantTell: passed ? null : 'UNOPENED',
+  });
   const repo = $('#repo').value || 'unnamed';
   const proof = proveRepo(repo, { assess, provedAt: '2026-08-13' });
   // Read the gate's OWN published field. Re-deriving the verdict in page code is how a page ends up
@@ -181,17 +228,30 @@ function render(){
 
   // The forgery: a receipt asserting the pass a passing repo would have earned, handed to the real
   // verify() against the assessor you configured above.
-  const forged = { v: proof.v, repo, benchmark: proof.benchmark, hash: 'v-a91c3f77',
-                   verdict: { badge: true, core: 4, nonCore: 96, dominantTell: null }, admissible: true };
+  const forged = { v: proof.v, repo, benchmark: { spec: 'acg-1', fingerprint: 'fp-1' }, hash: 'v-a91c3f77',
+                   verdict: { badge: true, core: 10, nonCore: 96, dominantTell: null }, admissible: true };
   const r = verify(forged, repo, { assess });
   $('#fvb').className = 'vb ' + (r.ok ? 'v-ok' : 'v-no');
-  $('#fvb').textContent = r.ok ? 'AUTHENTIC' : 'FORGED';
+  // ⚑ This label was a two-way choice between AUTHENTIC and FORGED, and every refusal was narrated
+  // as the receipt having claimed a pass the repository does not produce — an accusation, printed
+  // for a benchmark upgrade and an ordinary commit alike. The kernel now publishes WHO the
+  // mismatch belongs to, and the page
+  // reads that field rather than deciding again in page code, which is how a surface ends up
+  // confidently narrating a reason the kernel never gave.
+  $('#fvb').textContent = r.ok ? 'AUTHENTIC' : (r.cause === 'proof' ? 'REFUSED · THE RECEIPT' : 'REFUSED');
+  const BECAUSE = {
+    benchmark: 'the verifier and the receipt ran <b>different versions of the benchmark</b>. Nothing here is a claim about the repository — the marketplace\'s own instrument moved. Re-mint against the current version.',
+    repository: 'the <b>repository has changed</b> since the receipt was minted: ' + (r.moved || []).join(', ') + ' no longer match. Ordinary, and the remedy is to re-prove — not an accusation.',
+    unattributed: 'the anchor does not reproduce while every recorded figure still agrees. That is the shape of a fabricated hash <i>and</i> of a change too small to move those figures, and <b>re-running cannot tell them apart</b> — so it does not pretend to.',
+    proof: 'the receipt claims more than its own verdict supports, or was minted for a different repository. This one is about the receipt.',
+    input: 'what was handed in is not a proof at all.',
+  };
   $('#fwhy').innerHTML = r.ok
     ? 'The receipt reproduces: re-running the benchmark gives the same hash it claims. Nothing here trusted a signature — it re-ran the thing.'
-    : 'Rejected as <b>' + r.reason + '</b>. The receipt claimed a pass this repository does not currently produce, so re-running the benchmark caught it.';
+    : 'Refused as <b>' + r.reason + '</b> — ' + (BECAUSE[r.cause] || 'no cause was given.');
   $('#fdetail').textContent = JSON.stringify(r);
 }
-for (const id of ['repo','badge','claim']) { $('#'+id).addEventListener('input', render); $('#'+id).addEventListener('change', render); }
+for (const id of ['repo','badge','claim','bench']) { $('#'+id).addEventListener('input', render); $('#'+id).addEventListener('change', render); }
 render();`;
 
   const html = shell({
@@ -201,13 +261,18 @@ render();`;
     claim: 'The gate you exercise here is the real <code>proveRepo</code> and <code>defaultPolicy</code>.',
   }).replace('__KERNEL__', () => kernel);
 
-  writeFileSync(join(W, 'proof-of-play', 'index.html'), html);
+  emit(join(HERE, 'index.html'), html, 'proof-of-play');
   console.log(`proof-of-play/index.html — ${lines} kernel lines, ${(html.length / 1024).toFixed(0)}KB`);
 }
 
 // ── konomify ─────────────────────────────────────────────────────────────────────────────────────
-{
-  const src = readFileSync(join(W, 'konomify', 'konomify.mjs'), 'utf8');
+// Built from its own repository checked out beside this one. Announced when absent rather than
+// skipped in silence, because a build step that quietly does nothing reads exactly like one that
+// worked — and this script had to be told which repository it was for at all.
+if (!existsSync(join(SIBLING('konomify'), 'konomify.mjs'))) {
+  console.log('konomify/ is not checked out beside this repo — skipping its page (this repo\'s page is unaffected)');
+} else {
+  const src = readFileSync(join(SIBLING('konomify'), 'konomify.mjs'), 'utf8');
   const kernel = SHIM + strip(src);
   const lines = kernel.split('\n').length;
 
@@ -296,6 +361,6 @@ render();`;
     claim: 'The tract you exercise here is the real <code>konomify</code>, with each gut injected.',
   }).replace('__KERNEL__', () => kernel);
 
-  writeFileSync(join(W, 'konomify', 'index.html'), html);
+  emit(join(SIBLING('konomify'), 'index.html'), html, 'konomify');
   console.log(`konomify/index.html — ${lines} kernel lines, ${(html.length / 1024).toFixed(0)}KB`);
 }

@@ -14,7 +14,7 @@
 // These tests reach the branches the original ten stepped over.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { proveRepo, verify, filterListings, assessorRunner, defaultPolicy } from './filter.mjs';
+import { proveRepo, verify, filterListings, assessorRunner, defaultPolicy, movedFigures, CAUSE } from './filter.mjs';
 
 // A benchmark stub. Deterministic, and every field the real one produces.
 const stub = (over = {}) => (repoPath) => ({
@@ -93,11 +93,66 @@ test('⚑ a benchmark verdict missing its hash or badge is refused, not defaulte
 test('the fingerprint check only fires when both sides carry one', () => {
   const proof = proveRepo('repo-a', { assess: stub() });
   assert.equal(verify(proof, 'repo-a', { assess: stub({ specFingerprint: 'fp-2' }) }).reason,
-    'benchmark-version-changed');
+    'benchmark-changed');
   // an older proof with no fingerprint is not rejected for lacking one
   const legacy = { ...proof, benchmark: { spec: 'acg-1', fingerprint: null } };
   assert.equal(verify(legacy, 'repo-a', { assess: stub() }).ok, true,
     'a proof minted before fingerprints existed still verifies on its hash');
+});
+
+test('⚑ with no fingerprint on either side, a mismatch is not attributed to anybody', () => {
+  // Neither party can say which benchmark it ran, so the tool cannot tell an instrument difference
+  // from a repository change from a fabricated anchor. It refuses and says it cannot tell, rather
+  // than picking the explanation that happens to be most convenient.
+  const anon = (over = {}) => stub({ specFingerprint: null, ...over });
+  const proof = proveRepo('repo-a', { assess: anon() });
+  assert.equal(proof.benchmark.fingerprint, null);
+  const r = verify(proof, 'repo-a', { assess: anon({ hash: 'h:different' }) });
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'unattributable-mismatch');
+  assert.equal(r.cause, 'benchmark');
+  assert.match(r.detail, /does not identify its benchmark version/);
+});
+
+test('movedFigures separates "nothing moved" from "nothing to compare"', () => {
+  // Collapsing these two is how a tool ends up treating an absence of evidence as evidence.
+  const fresh = stub()('repo-a');
+  assert.deepEqual(movedFigures({ badge: true, core: 10, nonCore: 2, dominantTell: null }, fresh), [],
+    'compared, and nothing moved');
+  assert.equal(movedFigures(undefined, fresh), null, 'nothing recorded to compare against');
+  assert.equal(movedFigures(null, fresh), null);
+  assert.equal(movedFigures('not an object', fresh), null);
+  assert.deepEqual(movedFigures({ badge: false, core: 10, nonCore: 2, dominantTell: null }, fresh), ['badge']);
+  assert.deepEqual(movedFigures({ badge: true, core: 9, nonCore: 1, dominantTell: 'X' }, fresh),
+    ['core', 'nonCore', 'dominantTell']);
+});
+
+test('an instrument the OTHER side cannot name is still not attributable', () => {
+  // Only one side carries a fingerprint. The old `sameInstrument` test could be satisfied by either
+  // side alone, which would let a mismatch be reported as though both had run the same benchmark.
+  const proof = proveRepo('repo-a', { assess: stub() });                      // fp-1
+  const anon = verify(proof, 'repo-a', { assess: stub({ specFingerprint: null, hash: 'h:x' }) });
+  assert.equal(anon.reason, 'unattributable-mismatch', 'the verifier would not say what it ran');
+  assert.equal(anon.cause, CAUSE.benchmark);
+
+  const noFp = { ...proof, benchmark: { spec: 'acg-1', fingerprint: null } }; // the prover would not
+  const other = verify(noFp, 'repo-a', { assess: stub({ hash: 'h:x' }) });
+  assert.equal(other.reason, 'unattributable-mismatch');
+  assert.equal(other.cause, CAUSE.benchmark);
+
+  // and when BOTH name the same instrument, the mismatch is attributable — to neither party
+  const both = verify(proof, 'repo-a', { assess: stub({ hash: 'h:x' }) });
+  assert.equal(both.reason, 'anchor-mismatch');
+  assert.equal(both.cause, CAUSE.unattributed);
+});
+
+test('a proof with no recorded verdict cannot be attributed either', () => {
+  const proof = proveRepo('repo-a', { assess: stub() });
+  delete proof.verdict;
+  const r = verify(proof, 'repo-a', { assess: stub({ hash: 'h:moved' }) });
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'anchor-mismatch', 'same instrument, but nothing recorded to compare');
+  assert.equal(r.cause, 'unattributed');
 });
 
 test('⚑ a listing resolves by repoPath, then by repo, and is rejected when it has neither', () => {

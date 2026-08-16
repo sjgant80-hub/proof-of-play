@@ -36,10 +36,24 @@ benchmark is the bar.
 ## What it guarantees
 
 - **Un-forgeable without a signer** — authenticity rests on a reproducible hash. Paste a passing
-  hash onto a failing repo and verification re-derives the real one: mismatch.
-- **Non-transferable** — a proof binds to one repository; it won't verify for another.
+  hash onto a failing repo and verification re-derives the real one: refused.
+- **Non-transferable** — a proof records the repository it was minted for, and is refused when
+  presented for another. ⚑ This used to be carried by the hash alone, which meant it held only when
+  the two repositories differed in content: a **byte-identical fork** re-derived the same hash and
+  the proof transferred cleanly. In a fork-tree economy that is the everyday case, not an edge one.
+  The name can only refuse, never admit — two unrelated repositories can share a basename, so the
+  reproducing hash still does the work.
 - **Point-in-time, self-healing** — if a tool degrades, its verdict changes and its proof stops
   verifying, so it falls out of admission on its own.
+- **It says what the refusal is about** — a receipt can fail to verify because the marketplace
+  upgraded its benchmark, because the seller's code moved on, or because the receipt was fabricated.
+  These are not the same event and a gate that reports all three as one word is not usable by honest
+  sellers. `verify()` returns a `cause`: `benchmark`, `repository`, `proof`, or `unattributed`.
+- **It refuses to guess** — when the anchor fails to reproduce while every recorded figure still
+  agrees, that is the shape of a fabricated hash *and* of a change too small to move those figures.
+  Re-running cannot separate them, so the verdict is `anchor-mismatch` and says so, rather than
+  calling somebody a forger on evidence it does not have. It is still a refusal; the distinction is
+  about the explanation owed, never a way in.
 - **Benchmark-agnostic** — swap the bar without touching the gate.
 
 ## Seen on real repositories
@@ -59,7 +73,7 @@ whole job.
 ## Test
 
 ```bash
-npm test   # 10 assertions, incl. the anti-forgery property — a proof of an unearned pass is rejected
+npm test   # the kernel, the gate's own gaps, and the CLI — incl. the anti-forgery property
 ```
 
 Zero dependencies · MIT · single-file library + CLI.
