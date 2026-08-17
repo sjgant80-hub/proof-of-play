@@ -19,7 +19,7 @@ jobs:
       # catch. Pinned: an unpinned gate is a gate somebody else can change.
       - name: witness — try to break the gate's own tests
         run: |
-          git clone --depth 1 --branch v0.4 https://github.com/sjgant80-hub/witness.git /tmp/witness
+          git clone --depth 1 --branch v0.3 https://github.com/sjgant80-hub/witness.git /tmp/witness
           node /tmp/witness/witness.mjs mutate filter.mjs \
             --cap 400 --baseline witness.filter.baseline.json --test npm test | tee gate.out
 

@@ -93,15 +93,13 @@ export function proveRepo(repoPath, { assess = assessorRunner(), policy = defaul
 // specFingerprint — so any change to the benchmark changes the hash, the hash check fires first,
 // and the fingerprint branch is never reached with a real benchmark. It looked covered because the
 // test stub returns a hash of `'h:' + repoPath`, decoupled from its own spec, which is a benchmark
-// that cannot exist. And test.mjs contained
-//     assert.ok(r.reason === 'hash-mismatch' || r.reason === 'benchmark-version-changed')
-// — an assertion that accepts either answer, which is what writing down an ambiguity looks like
+// that cannot exist. And test.mjs asserted that the reason was EITHER of the two, with an or —
+// an assertion that accepts either answer, which is what writing down an ambiguity looks like
 // instead of resolving it. The instrument check now runs FIRST, where it can actually fire.
 //
-// (That assertion is described here rather than quoted. A verbatim quotation puts operators into a
-// comment, and witness generated mutants from them that no test could ever kill, so the file read as
-// test-theatre because of a sentence about the code. witness v0.4 masks comments; the prose stays
-// because it is clearer than the quotation was.)
+// (Described rather than quoted, deliberately. A verbatim quotation puts operators into a comment,
+// and a mutation gate generates mutants from them that no test can ever kill — so the file reads as
+// test-theatre because of a sentence ABOUT the code. It has cost this estate seven repositories.)
 //
 // Every branch below still returns ok:false. The distinction is about the EXPLANATION owed to
 // whoever is being refused — never about letting anything in. "It is only drift" must never become
