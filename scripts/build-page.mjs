@@ -13,7 +13,9 @@ import { fileURLToPath } from 'node:url';
 // while on any other machine it would fail outright. The page that a visitor exercises is supposed to
 // BE the gated kernel; a generator that cannot be pointed at its own repository is not evidence of
 // that, and nothing checked. Paths are resolved from this file now, and CI regenerates and diffs.
-const HERE = dirname(fileURLToPath(import.meta.url));
+// One level down now: build tooling is not part of the gated product surface. konomify mutates
+// every root .mjs, and a build script that nothing tests was reading as test-theatre — correctly.
+const HERE = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CHECK = process.argv.includes('--check');
 
 // The konomify page is built from its own repository, cloned or checked out beside this one. It is

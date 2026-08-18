@@ -39,4 +39,4 @@ jobs:
       # have been run here at all. A page that quietly stopped being the kernel is invisible until
       # somebody reads it.
       - name: the live page is still the gated kernel
-        run: node build-page.mjs --check
+        run: node scripts/build-page.mjs --check
